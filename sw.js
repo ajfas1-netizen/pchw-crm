@@ -1,5 +1,5 @@
-var C='sdcrm-v7';
-var F=['./','./index.html','./manifest.webmanifest','./icon-180.png','./icon-512.png','./icon-32.png','./icon-1024.png'];
+var C='sdcrm-v9';
+var F=['./','./index.html','./manifest.webmanifest','./icon-180.png','./icon-512.png','./icon-32.png','./icon-1024.png','./brand-wordmark.png'];
 self.addEventListener('install',function(e){
   self.skipWaiting();
   e.waitUntil(caches.open(C).then(function(c){return c.addAll(F).catch(function(){});}));

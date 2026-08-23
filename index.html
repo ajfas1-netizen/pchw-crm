@@ -155,6 +155,8 @@ var EXPCATS=['Consumables','Marketing','Fuel','Insurance','Software','Fees','Sup
 var SERVICES=[['Express Hand Wash',75],['The Full Reset',225],['Quick Detail',295],
  ['Gloss Enhancement',495],['LUMEN 3yr Ceramic',1095],['MERIDIAN 5yr Ceramic',1995],
  ['ZENITH 9yr Ceramic',3450],['PPF Full Front',2195]];
+var BIZ={name:'Striking Details LLC',addr:'3560 SW Racquet Club Way',city:'Palm City, FL 34990',
+  phone:'(561) 275-8846',web:'palmcityhandwash.com'};
 var GOAL_DEF={target:0,taxPct:25,daysPerWeek:5,weeksPerYear:50,costPct:null};
 var VTYPES=['Car','Truck / SUV','Boat','RV / coach','Fleet vehicle'];
 var $=function(s,r){return (r||document).querySelector(s);};
@@ -300,6 +302,96 @@ function opEx(){return sum(L().filter(function(e){return e.kind==='expense';}));
 function equip(){return sum(L().filter(function(e){return e.kind==='equipment';}));}
 function capital(){return sum(L().filter(function(e){return e.kind==='capital';}));}
 function profit(){return revAll()-opEx();}
+function INV(){return DB.invoices||(DB.invoices=[]);}
+function nextInvNo(){
+  var n=1000; INV().forEach(function(i){var m=/SD-(\d+)/.exec(i.no||'');if(m)n=Math.max(n,+m[1]);});
+  return 'SD-'+(n+1);
+}
+function invTotal(iv){return (iv.items||[]).reduce(function(t,x){return t+(+x.amount||0);},0);}
+function vehLabel(v){return [v.year,v.make,v.model,v.color?'('+v.color+')':''].filter(Boolean).join(' ').trim();}
+
+function drawInvoice(iv){
+  var items=(iv.items||[]).length;
+  var noteLines=Math.max(3,(iv.notes||'').split('\n').length);
+  var W=1240, H=Math.max(980, 470+44+items*52+300+noteLines*26+120);
+  var cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  var x=cv.getContext('2d');
+  var NAVY='#08182E',GOLD='#C5A253',GOLDL='#B8963F',INKT='#1A2733',MUT='#6B7A88';
+  x.fillStyle='#FFFFFF';x.fillRect(0,0,W,H);
+  // header band
+  x.fillStyle=NAVY;x.fillRect(0,0,W,208);
+  x.fillStyle=GOLD;x.fillRect(0,208,W,5);
+  x.textBaseline='alphabetic';
+  x.fillStyle='#F7F1E0';x.font='700 46px Georgia, serif';
+  x.fillText('STRIKING DETAILS',64,104);
+  x.fillStyle=GOLD;x.font='600 17px Helvetica, Arial, sans-serif';
+  x.fillText('CERAMIC  ·  PPF  ·  HAND WASH  ·  AUTO  ·  MARINE  ·  RV',64,142);
+  x.textAlign='right';
+  x.fillStyle='#F7F1E0';x.font='700 40px Georgia, serif';x.fillText('INVOICE',W-64,100);
+  x.fillStyle=GOLD;x.font='600 22px Helvetica, Arial, sans-serif';x.fillText(iv.no||'',W-64,136);
+  x.textAlign='left';
+
+  function head(t,X,Y){x.fillStyle=GOLDL;x.font='700 13px Helvetica, Arial, sans-serif';x.fillText(t.toUpperCase(),X,Y);}
+  function line(t,X,Y,sz,col,bold){x.fillStyle=col||INKT;x.font=(bold?'700 ':'')+(sz||17)+'px Helvetica, Arial, sans-serif';x.fillText(t,X,Y);}
+
+  var y=286;
+  head('From',64,y); head('Bill to',470,y); head('Details',876,y);
+  y+=30;
+  var fromL=[BIZ.name,BIZ.addr,BIZ.city,BIZ.phone,BIZ.web];
+  fromL.forEach(function(t,i){line(t,64,y+i*26,16,i===0?INKT:MUT,i===0);});
+  var toL=[iv.toName||'',iv.toCompany||'',iv.toAddr||'',iv.toCity||'',iv.attn?('Attn: '+iv.attn):''].filter(Boolean);
+  toL.forEach(function(t,i){line(t,470,y+i*26,16,i===0?INKT:MUT,i===0);});
+  var det=[['Invoice',iv.no||''],['Invoice date',iv.date||''],['Service date',iv.serviceDate||iv.date||''],
+           ['Terms',iv.terms||'Due on receipt'],['Vehicles',String((iv.items||[]).length)]];
+  det.forEach(function(d,i){line(d[0],876,y+i*26,15,MUT);x.textAlign='right';line(d[1],W-64,y+i*26,15,INKT);x.textAlign='left';});
+
+  // table
+  y=470;
+  x.fillStyle=NAVY;x.fillRect(64,y,W-128,44);
+  x.fillStyle='#F7F1E0';x.font='700 14px Helvetica, Arial, sans-serif';
+  x.fillText('VEHICLE',82,y+29); x.fillText('SERVICE',560,y+29);
+  x.textAlign='right';x.fillText('AMOUNT',W-82,y+29);x.textAlign='left';
+  y+=44;
+  (iv.items||[]).forEach(function(it,i){
+    if(i%2)  {x.fillStyle='#F7F8FA';x.fillRect(64,y,W-128,52);}
+    line(vehLabel(it.vehicle||{})||'—',82,y+33,17,INKT);
+    line(it.service||'',560,y+33,17,MUT);
+    x.textAlign='right';line('$'+(+it.amount||0).toFixed(2),W-82,y+33,18,INKT,true);x.textAlign='left';
+    x.strokeStyle='#E4E8EC';x.lineWidth=1;x.beginPath();x.moveTo(64,y+52);x.lineTo(W-64,y+52);x.stroke();
+    y+=52;
+  });
+
+  // totals
+  y+=26;
+  var tot=invTotal(iv);
+  x.textAlign='right';
+  line('Subtotal, '+(iv.items||[]).length+' vehicle'+((iv.items||[]).length===1?'':'s'),W-240,y,17,MUT);
+  line('$'+tot.toFixed(2),W-82,y,17,INKT); y+=20;
+  x.fillStyle=GOLD;x.fillRect(W-420,y,356,3); y+=44;
+  line('TOTAL DUE',W-240,y,22,NAVY,true);
+  line('$'+tot.toFixed(2),W-82,y,26,NAVY,true);
+  x.textAlign='left';
+
+  // notes
+  y+=80;
+  head('Payment',64,y); head('Work performed',560,y); y+=28;
+  ['Payable to '+BIZ.name, iv.terms||'Due on receipt', 'Questions: '+BIZ.phone]
+    .forEach(function(t,i){line(t,64,y+i*26,15,MUT);});
+  var wp=(iv.notes||'').split('\n').slice(0,5);
+  wp.forEach(function(t,i){line(t,560,y+i*26,15,MUT);});
+
+  // footer
+  x.fillStyle=NAVY;x.fillRect(0,H-96,W,96);
+  x.fillStyle=GOLD;x.font='600 15px Helvetica, Arial, sans-serif';x.textAlign='center';
+  x.fillText('CERTIFIED  ·  WARRANTIED  ·  PALM CITY, FL',W/2,H-54);
+  x.fillStyle='#8FA0B2';x.font='14px Helvetica, Arial, sans-serif';
+  x.fillText(BIZ.phone+'   ·   '+BIZ.web,W/2,H-28);
+  x.textAlign='left';
+  return cv;
+}
+function invoiceBlob(iv){
+  return new Promise(function(res){drawInvoice(iv).toBlob(function(b){res(b);},'image/png',0.95);});
+}
 function goal(){var g=DB.goal||{};var o={};for(var k in GOAL_DEF)o[k]=(g[k]===undefined||g[k]===null)?GOAL_DEF[k]:g[k];
   if(g.costPct!==undefined&&g.costPct!==null)o.costPct=g.costPct; return o;}
 function costPctActual(){
@@ -320,6 +412,16 @@ function goalMath(){
   return {target:g.target, taxPct:g.taxPct, costPct:Math.round(c*100),
     gross:gross, perMonth:gross/12, perWeek:gross/wks, perDay:gross/(wks*dpw),
     keepRate:keep, weeks:wks, days:dpw};
+}
+function daysLeftInYear(){
+  var d=new Date(today()+'T00:00:00'), end=new Date(d.getFullYear(),11,31);
+  return Math.max(0,Math.floor((end-d)/86400000)+1);
+}
+function restOfYear(){
+  var m=goalMath(); if(!m.gross)return null;
+  var f=daysLeftInYear()/365;
+  return {days:daysLeftInYear(), takeHome:m.target*f, gross:m.gross*f,
+          year:new Date(today()+'T00:00:00').getFullYear()};
 }
 function yearRevenue(){var y=today().slice(0,4);
   return sum(L().filter(function(e){return e.kind==='revenue'&&(e.date||'').slice(0,4)===y;}));}
@@ -442,6 +544,14 @@ function vMoney(){
    +'</div><div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.08)">'
    +kv('Profit, revenue minus operating spend',money(profit()),profit()>=0?'var(--ok)':'var(--bad)')
    +'<div class="muted" style="margin-top:7px">Equipment is left out of profit on purpose. It is a one-time asset, not a monthly cost.</div></div></div>';
+  var ivs=INV().slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+  h+='<h3 class="sec">Invoices</h3><div class="card">';
+  h+='<button class="btn" id="ivNew">New invoice</button>';
+  if(ivs.length)h+='<div style="height:6px"></div>'+ivs.map(function(iv){
+    return '<div class="item" data-inv="'+iv.id+'"><div class="bd"><div class="nm">'+esc(iv.no||'Draft')+' &middot; '+esc(iv.toCompany||iv.toName||'No customer')+'</div>'
+     +'<div class="sub">'+fmtDate(iv.date)+' &middot; '+((iv.items||[]).length)+' vehicle(s)</div></div>'
+     +'<div class="rt" style="color:var(--gold-lt);font-weight:700">'+money(invTotal(iv))+'</div></div>';}).join('');
+  h+='</div>';
   var led=L().slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.id>a.id?1:-1);});
   h+='<h3 class="sec">Ledger &middot; '+led.length+' entries</h3><div class="card">';
   h+= led.length? led.map(ledHTML).join('') : '<div class="empty">Nothing logged yet. Use <b>Add expense</b> or <b>Scan receipt</b> above.</div>';
@@ -461,24 +571,97 @@ function goalCard(){
    +'<div style="display:flex;align-items:baseline;gap:8px"><div class="lab" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex:1">Take home '+money(m.target)+' a year</div>'+chip+'</div>'
    +'<div class="row3" style="margin-top:11px">'
    +kv('Per day',money(m.perDay))+kv('Per week',money(m.perWeek))+kv('Per month',money(m.perMonth))+'</div>'
-   +'<div class="muted" style="margin-top:10px">That is <b style="color:var(--gold-lt)">'+money(m.gross)+'</b> of invoicing over the year, because '
+   +'<div class="muted" style="margin-top:10px">That is <b style="color:var(--gold-lt)">'+money(m.gross)+'</b> of invoicing over a full year, because '
    +m.costPct+'% goes on supplies and '+m.taxPct+'% of what is left goes to tax. You keep about '+Math.round(m.keepRate*100)+' cents on the dollar.</div>';
-  // what the weekly number looks like in actual jobs
-  var wk=m.perWeek;
-  var picks=SERVICES.filter(function(x){return x[1]<=Math.max(wk,75);}).slice(-3);
-  if(!picks.length)picks=[SERVICES[0]];
+  var ro=restOfYear();
+  if(ro&&ro.days<330){
+    h+='<div class="math" style="margin-top:13px"><b>Rest of '+ro.year+', '+ro.days+' days left</b>'
+     +'<span class="big">'+money(ro.takeHome)+' to take home, which is '+money(ro.gross)+' invoiced.</span></div>';
+  }
+  // ground it in the work he actually does: washes at 75 to 100 a car
+  var wk=m.perWeek, dy=m.perDay;
+  function per(rate){
+    return {wk:wk/rate, dy:dy/rate};
+  }
+  var a=per(75), b=per(100);
   h+='<div style="margin-top:13px;padding-top:11px;border-top:1px solid rgba(255,255,255,.08)">'
-   +'<div class="lab" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">A week looks like</div>'
-   +picks.map(function(sv){
-      var n=wk/sv[1];
-      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13.5px">'
-       +'<span>'+esc(sv[0])+'</span><span style="color:var(--gold-lt);font-weight:700">'
-       +(n>=1?(Math.round(n*10)/10)+' a week':'1 every '+Math.round(1/n)+' weeks')+'</span></div>';
-    }).join('')
+   +'<div class="lab" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">What that is in cars</div>'
+   +'<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:14px">'
+   +'<span>Washes at $75</span><span style="color:var(--gold-lt);font-weight:700">'
+   +(Math.round(a.dy*10)/10)+' a day &middot; '+Math.round(a.wk)+' a week</span></div>'
+   +'<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:14px">'
+   +'<span>Washes at $100</span><span style="color:var(--gold-lt);font-weight:700">'
+   +(Math.round(b.dy*10)/10)+' a day &middot; '+Math.round(b.wk)+' a week</span></div>'
+   +'<div class="muted" style="margin-top:9px">That is the day job. Anything bigger just buys days back &mdash; '
+   +'one MERIDIAN coating at $1,995 covers <b style="color:var(--gold-lt)">'+Math.round(1995/75)+' washes</b>, '
+   +'about '+(Math.round(1995/dy*10)/10)+' days of hustle.</div>'
    +'</div>';
   if(p)h+='<div class="muted" style="margin-top:11px">Billed '+money(p.got)+' in '+p.days+' days against '+money(p.expected)+' to be on pace.</div>';
   else h+='<div class="muted" style="margin-top:11px">Pace tracking starts once there are a couple of weeks of jobs behind it.</div>';
   h+='<div style="height:11px"></div><button class="btn ghost sm" id="goalSet">Adjust</button></div>';
+  return h;
+}
+function invForm(iv){
+  var n=!iv;
+  iv=iv||{id:uid(),no:nextInvNo(),date:today(),serviceDate:today(),terms:'Due on receipt',items:[{vehicle:{},service:'',amount:''}]};
+  var h='<input type="hidden" id="iv_id" value="'+iv.id+'">';
+  h+='<div class="row2"><label class="f"><span>Invoice no</span><input type="text" id="iv_no" value="'+esc(iv.no)+'"></label>'
+    +'<label class="f"><span>Date</span><input type="date" id="iv_date" value="'+esc(iv.date)+'"></label></div>';
+  h+='<h3 class="sec" style="margin-top:6px">Bill to</h3>';
+  h+='<label class="f"><span>Name</span><input type="text" id="iv_toName" value="'+esc(iv.toName)+'" autocapitalize="words"></label>';
+  h+='<div class="row2"><label class="f"><span>Company</span><input type="text" id="iv_toCompany" value="'+esc(iv.toCompany)+'" autocapitalize="words"></label>'
+    +'<label class="f"><span>Attn</span><input type="text" id="iv_attn" value="'+esc(iv.attn)+'"></label></div>';
+  h+='<div class="row2"><label class="f"><span>Street</span><input type="text" id="iv_toAddr" value="'+esc(iv.toAddr)+'"></label>'
+    +'<label class="f"><span>City, state zip</span><input type="text" id="iv_toCity" value="'+esc(iv.toCity)+'"></label></div>';
+  h+='<div class="row2"><label class="f"><span>Send to mobile</span><input type="tel" id="iv_phone" value="'+esc(iv.phone)+'"></label>'
+    +'<label class="f"><span>Send to email</span><input type="email" id="iv_email" value="'+esc(iv.email)+'"></label></div>';
+  h+='<h3 class="sec">Vehicles</h3><div id="ivItems">'+invItemRows(iv.items||[])+'</div>'
+    +'<button class="btn ghost sm" id="ivAdd">+ Add vehicle</button>';
+  h+='<h3 class="sec">Work performed</h3><label class="f"><textarea id="iv_notes" placeholder="Reset Wash on three vehicles on the lot.">'+esc(iv.notes)+'</textarea></label>';
+  h+='<label class="f"><span>Terms</span><input type="text" id="iv_terms" value="'+esc(iv.terms||'Due on receipt')+'"></label>';
+  h+='<div style="height:8px"></div><button class="btn" id="ivPreview">Preview and send</button>';
+  h+='<div style="height:9px"></div><button class="btn ghost" id="ivSave">Save draft</button>';
+  if(!n)h+='<div style="height:9px"></div><button class="btn bad" id="ivDel">Delete invoice</button>';
+  return h;
+}
+function invItemRows(items){
+  if(!items.length)return '<div class="muted" style="margin-bottom:9px">No vehicles yet.</div>';
+  return items.map(function(it,i){
+    var v=it.vehicle||{};
+    return '<div class="card" style="padding:11px">'
+     +'<div class="row3"><label class="f" style="margin:0"><span>Year</span><input type="text" inputmode="numeric" data-ii="'+i+'" data-if="year" value="'+esc(v.year)+'" placeholder="2017"></label>'
+     +'<label class="f" style="margin:0"><span>Make</span><input type="text" data-ii="'+i+'" data-if="make" value="'+esc(v.make)+'" placeholder="Audi" autocapitalize="words"></label>'
+     +'<label class="f" style="margin:0"><span>Model</span><input type="text" data-ii="'+i+'" data-if="model" value="'+esc(v.model)+'" placeholder="Q7" autocapitalize="words"></label></div>'
+     +'<div class="row2" style="margin-top:9px"><label class="f" style="margin:0"><span>Colour</span><input type="text" data-ii="'+i+'" data-if="color" value="'+esc(v.color)+'" placeholder="White" autocapitalize="words"></label>'
+     +'<label class="f" style="margin:0"><span>Amount</span><input type="number" inputmode="decimal" data-ii="'+i+'" data-ia="amount" value="'+(it.amount||'')+'" placeholder="75"></label></div>'
+     +'<label class="f" style="margin:9px 0 0"><span>Service</span><input type="text" data-ii="'+i+'" data-ia="service" value="'+esc(it.service)+'" list="svclist" placeholder="Reset Wash"></label>'
+     +'<datalist id="svclist">'+SERVICES.map(function(x){return '<option>'+esc(x[0])+'</option>';}).join('')+'</datalist>'
+     +'<button class="btn ghost sm" data-delitem="'+i+'" style="margin-top:9px">Remove</button></div>';
+  }).join('');
+}
+function readInvForm(){
+  var id=$('#iv_id').value, iv=INV().filter(function(x){return x.id===id;})[0];
+  if(!iv){iv={id:id,items:[]};INV().push(iv);}
+  ['no','date','toName','toCompany','attn','toAddr','toCity','phone','email','notes','terms'].forEach(function(k){
+    var el=$('#iv_'+k); if(el)iv[k]=el.value;});
+  iv.serviceDate=iv.date;
+  iv.items=iv.items||[];
+  $$('[data-ii]').forEach(function(el){
+    var i=+el.dataset.ii; iv.items[i]=iv.items[i]||{vehicle:{}};
+    if(el.dataset.if){iv.items[i].vehicle=iv.items[i].vehicle||{};iv.items[i].vehicle[el.dataset.if]=el.value;}
+    if(el.dataset.ia){iv.items[i][el.dataset.ia]=el.dataset.ia==='amount'?(+el.value||0):el.value;}
+  });
+  iv.updated=new Date().toISOString();
+  return iv;
+}
+function invPreview(iv){
+  var url=drawInvoice(iv).toDataURL('image/png');
+  var h='<img class="thumb" style="max-height:none" src="'+url+'" alt="Invoice preview">';
+  h+='<div class="row2" style="margin-top:6px"><button class="btn" id="ivShare">Text or email it</button>'
+   +'<button class="btn ghost" id="ivSaveImg">Save image</button></div>';
+  h+='<div style="height:9px"></div><button class="btn ghost" id="ivBack">Back to edit</button>';
+  h+='<div class="muted" style="margin-top:11px">Sends as an image, which drops straight into Messages or Mail. '
+   +'For a PDF, tap Save image then use Print from the share sheet.</div>';
   return h;
 }
 function goalForm(){
@@ -508,7 +691,49 @@ function ledHTML(e){
    +'<div class="sub">'+fmtDate(e.date)+' &middot; '+esc(tags.filter(Boolean).join(' · '))+(e.receipt?' &middot; receipt':'')+'</div></div>'
    +'<div class="rt" style="color:'+col+';font-weight:700;font-size:15px">'+sign+money(e.amount)+'</div></div>';
 }
+function jobStats(){
+  var jobs=L().filter(function(e){return e.kind==='revenue';});
+  var n=jobs.length, rev=sum(jobs);
+  var hrs=jobs.reduce(function(t,e){return t+(+e.hours||0);},0);
+  var withHrs=jobs.filter(function(e){return +e.hours>0;});
+  var cars=0; jobs.forEach(function(e){var c=findC(e.contactId); cars+=c&&(c.vehicles||[]).length?c.vehicles.length:1;});
+  var months={}; L().filter(function(e){return e.kind==='expense';}).forEach(function(e){
+    var k=(e.date||'').slice(0,7); months[k]=(months[k]||0)+(+e.amount||0);});
+  var mk=Object.keys(months); var mAvg=mk.length?mk.reduce(function(t,k){return t+months[k];},0)/mk.length:0;
+  var supplies=sum(L().filter(function(e){return e.kind==='expense'&&/suppl|consum/i.test(e.cat||'');}));
+  return {jobs:n, rev:rev, avgJob:n?rev/n:0,
+    hours:hrs, hourly:hrs>0?sum(withHrs)/hrs:null, jobsWithHours:withHrs.length,
+    cars:cars, perCar:cars?rev/cars:0,
+    monthlySpend:mAvg, months:mk.length, supplies:supplies,
+    suppliesPerCar:cars?supplies/cars:0};
+}
+function vInsights(){
+  var s=jobStats();
+  if(!s.jobs)return '<div class="card"><h3 class="sec" style="margin-top:0">Numbers</h3>'
+    +'<div class="empty">Log a few jobs and this fills in: hourly rate, cost per car, monthly spend.</div></div>';
+  var h='<div class="card"><h3 class="sec" style="margin-top:0">Per job</h3><div class="row2">'
+   +kv('Jobs billed',String(s.jobs))+kv('Average job',money(s.avgJob))
+   +kv('Vehicles done',String(s.cars))+kv('Revenue per vehicle',money(s.perCar))+'</div></div>';
+  h+='<div class="card"><h3 class="sec" style="margin-top:0">Time</h3>';
+  if(s.hourly===null){
+    h+='<div class="muted">Add <b>hours</b> when you log revenue and this shows your real hourly rate. '
+     +'That is the number that tells you whether a big coating beats three washes.</div>';
+  } else {
+    h+='<div class="row2">'+kv('Hours logged',String(Math.round(s.hours*10)/10))
+     +kv('Revenue per hour',money(s.hourly),'var(--ok)')+'</div>'
+     +'<div class="muted" style="margin-top:9px">From '+s.jobsWithHours+' of '+s.jobs+' jobs that have hours on them. That is before tax and supplies.</div>';
+  }
+  h+='</div>';
+  h+='<div class="card"><h3 class="sec" style="margin-top:0">Spend</h3><div class="row2">'
+   +kv('Supplies to date',money(s.supplies))+kv('Supplies per vehicle',money(s.suppliesPerCar))
+   +kv('Average month',money(s.monthlySpend))+kv('Months tracked',String(s.months))+'</div>'
+   +'<div class="muted" style="margin-top:9px">Equipment is left out of all of this. It is a one-time asset, not a running cost.</div></div>';
+  return h;
+}
 function vMore(){
+  return vInsights()+vMoreReal();
+}
+function vMoreReal(){
   var photos=0; L().forEach(function(e){if(e.receipt)photos++;});
   C().forEach(function(c){if(c.card)photos++;});
   return '<div class="card"><h3 class="sec" style="margin-top:0">Backup</h3>'
@@ -805,6 +1030,41 @@ document.addEventListener('click',function(ev){
     L().forEach(function(e){var p=findC(e.contactId);
       rows2.push([e.date,e.kind,e.amount,e.cat,e.memo,p?p.name:'',e.hours||'',e.paid?'yes':'no']);});
     dl('striking-ledger-'+stamp()+'.csv',csv(rows2),'text/csv');toast('CSV saved');return;}
+  if(t.id==='ivNew'){openSheet('New invoice',invForm(null));return;}
+  if((el=t.closest('[data-inv]'))){var iv0=INV().filter(function(z){return z.id===el.dataset.inv;})[0];
+    if(iv0)openSheet(iv0.no||'Invoice',invForm(iv0));return;}
+  if(t.id==='ivAdd'){var iv1=readInvForm();iv1.items.push({vehicle:{},service:'',amount:''});save();
+    $('#ivItems').innerHTML=invItemRows(iv1.items);return;}
+  if((el=t.closest('[data-delitem]'))){var iv2=readInvForm();iv2.items.splice(+el.dataset.delitem,1);save();
+    $('#ivItems').innerHTML=invItemRows(iv2.items);return;}
+  if(t.id==='ivSave'){var iv3=readInvForm();save();closeSheet();render();toast('Draft saved');return;}
+  if(t.id==='ivDel'){if(!confirm('Delete this invoice?'))return;
+    var id9=$('#iv_id').value;DB.invoices=INV().filter(function(z){return z.id!==id9;});
+    save();closeSheet();render();toast('Deleted');return;}
+  if(t.id==='ivPreview'){var iv4=readInvForm();save();
+    if(!invTotal(iv4)){toast('Add an amount first');return;}
+    CURIV=iv4; openSheet(iv4.no||'Invoice',invPreview(iv4)); return;}
+  if(t.id==='ivBack'){openSheet(CURIV.no||'Invoice',invForm(CURIV));return;}
+  if(t.id==='ivSaveImg'){
+    drawInvoice(CURIV).toBlob(function(b){
+      var a=document.createElement('a');a.href=URL.createObjectURL(b);
+      a.download=(CURIV.no||'invoice')+'.png';document.body.appendChild(a);a.click();
+      setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1500);
+      toast('Saved');},'image/png');
+    return;}
+  if(t.id==='ivShare'){
+    invoiceBlob(CURIV).then(function(b){
+      var f=new File([b],(CURIV.no||'invoice')+'.png',{type:'image/png'});
+      var txt='Invoice '+(CURIV.no||'')+' from Striking Details, '+money(invTotal(CURIV))+'. Thank you.';
+      if(navigator.canShare&&navigator.canShare({files:[f]})){
+        navigator.share({files:[f],title:'Invoice '+(CURIV.no||''),text:txt}).catch(function(){});
+      } else if(navigator.share){
+        navigator.share({title:'Invoice '+(CURIV.no||''),text:txt}).catch(function(){});
+      } else {
+        toast('Sharing needs a phone. Use Save image.');
+      }
+    });
+    return;}
   if(t.id==='goalSet'){openSheet('Your number',goalForm());return;}
   if(t.id==='goalSave'){
     DB.goal={target:+$('#g_target').value||0,taxPct:+$('#g_tax').value||0,

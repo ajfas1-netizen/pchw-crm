@@ -206,6 +206,17 @@ function save(){clearTimeout(saveT);saveT=setTimeout(function(){
   DB.updated=new Date().toISOString();
   encrypt(DB).then(function(p){return kvSet('vault',p);}).catch(function(e){toast('Save failed');console.error(e);});
 },250);}
+function loadFromLink(str){
+  try{
+    var m=String(str||'').match(/load=([A-Za-z0-9_\-]+)/);
+    var b=m?m[1]:String(str||'').trim();
+    b=b.replace(/-/g,'+').replace(/_/g,'/');
+    while(b.length%4)b+='=';
+    var d=JSON.parse(decodeURIComponent(escape(atob(b))));
+    if(!d||!d.contacts||!d.ledger)throw 0;
+    return d;
+  }catch(e){return null;}
+}
 function seed(){
   return {v:1,created:new Date().toISOString(),contacts:[],ledger:[]};
 }
@@ -401,6 +412,7 @@ function vMore(){
    +'<div style="height:9px"></div><button class="btn ghost" id="expCsvC">Export people as CSV</button>'
    +'<div style="height:9px"></div><button class="btn ghost" id="expCsvL">Export ledger as CSV</button>'
    +'<div style="height:9px"></div><button class="btn ghost" id="impBtn">Restore from backup</button>'
+   +'<div style="height:9px"></div><button class="btn ghost" id="pasteBtn">Paste a setup link</button>'
    +'<input type="file" id="impFile" accept="application/json" class="hide">'
    +'</div>'
    +'<div class="card"><h3 class="sec" style="margin-top:0">In the book</h3>'
@@ -688,6 +700,13 @@ document.addEventListener('click',function(ev){
       rows2.push([e.date,e.kind,e.amount,e.cat,e.memo,p?p.name:'',e.hours||'',e.paid?'yes':'no']);});
     dl('striking-ledger-'+stamp()+'.csv',csv(rows2),'text/csv');toast('CSV saved');return;}
   if(t.id==='impBtn'){$('#impFile').click();return;}
+  if(t.id==='pasteBtn'){
+    var v=prompt('Paste the setup link you were sent'); if(!v)return;
+    var d=loadFromLink(v);
+    if(!d){alert('That does not look like a setup link. Copy the whole thing, including the part after the #.');return;}
+    if(!confirm('Load '+d.contacts.length+' contact(s) and '+d.ledger.length+' ledger entries? This replaces what is on this phone.'))return;
+    DB=d;save();render();toast('Loaded');
+    return;}
   if(t.id==='chpw'){
     var a=prompt('New passcode, at least 4 characters'); if(!a||a.length<4)return;
     var b=prompt('Type it again'); if(a!==b){alert('Those did not match');return;}

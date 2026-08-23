@@ -83,6 +83,15 @@ textarea{min-height:80px;resize:vertical}
 .item .rt{text-align:right;flex:0 0 auto;font-size:12.5px}
 h3.sec{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin:20px 0 9px}
 .empty{color:var(--dim);font-size:14px;text-align:center;padding:28px 14px}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.acts.three{grid-template-columns:1fr 1fr 1fr}
+.act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;
+ background:linear-gradient(160deg,rgba(197,162,83,.18),rgba(18,49,79,.55) 60%,rgba(10,27,49,.9));
+ border:1px solid var(--gold);border-radius:var(--r);padding:16px 8px;cursor:pointer;
+ color:var(--gold-lt);font-size:12.5px;font-weight:700;letter-spacing:.04em;text-align:center;line-height:1.25}
+.act:active{transform:scale(.98)}
+.act svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.act.plain{background:linear-gradient(160deg,rgba(18,49,79,.6),rgba(10,27,49,.9));border-color:var(--hair);color:var(--gold)}
 .fab{position:fixed;right:16px;bottom:calc(74px + var(--safe));z-index:45;width:56px;height:56px;border-radius:50%;
  background:var(--gold);color:var(--ink);border:0;font-size:30px;line-height:1;box-shadow:0 8px 24px rgba(0,0,0,.5);cursor:pointer}
 /* sheet */
@@ -258,6 +267,17 @@ function render(){
   $('#view').innerHTML=({today:vToday,people:vPeople,money:vMoney,more:vMore})[TAB]();
   $('#view').scrollTop=0;
 }
+var IC={
+ person:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-6.4 7-6.4s7 2.8 7 6.4"/></svg>',
+ card:'<svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M6 10h5M6 13.5h3M15.5 10.5h3M15.5 14h3"/></svg>',
+ cash:'<svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/></svg>',
+ receipt:'<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-1.8-3 1.8-3-1.8L6 21z"/><path d="M9.5 8h5M9.5 11.5h5"/></svg>',
+ money:'<svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M16.5 7C16.5 5.3 14.5 4.3 12 4.3S7.5 5.3 7.5 7s1.8 2.5 4.5 3.1 4.5 1.4 4.5 3.1-2 2.7-4.5 2.7-4.5-1-4.5-2.7"/></svg>'};
+function acts(list,three){
+  return '<div class="acts'+(three?' three':'')+'">'+list.map(function(a){
+    return '<button class="act'+(a[3]?' plain':'')+'" id="'+a[0]+'">'+IC[a[2]]+'<span>'+a[1]+'</span></button>';
+  }).join('')+'</div>';
+}
 function vToday(){
   var due=[],soon=[],noNext=[];
   C().forEach(function(c){
@@ -265,7 +285,7 @@ function vToday(){
     else if(c.status!=='Completed'&&c.status!=='Dormant')noNext.push(c);
   });
   due.sort(function(a,b){return a[0]-b[0];}); soon.sort(function(a,b){return a[0]-b[0];});
-  var h='';
+  var h=acts([['aPerson','Add person','person'],['aCard','Scan card','card']]);
   h+='<div class="kpi">'
    +'<div class="card"><div class="lab">Cash on hand</div><div class="val">'+money(cash())+'</div></div>'
    +'<div class="card"><div class="lab">Owed to him</div><div class="val'+(owed()?'':' sm')+'" style="color:'+(owed()?'var(--warn)':'var(--gold-lt)')+'">'+money(owed())+'</div></div>'
@@ -280,7 +300,7 @@ function vToday(){
     noNext.slice(0,12).forEach(function(c){h+=itemHTML(c,null);});
   }
   if(!due.length&&!soon.length&&!noNext.length)
-    h+='<div class="empty">Nothing due.<br><br>Tap&nbsp;+ to add someone you just met.</div>';
+    h+='<div class="empty">Nothing due.<br><br>Use <b>Add person</b> or <b>Scan card</b> above when you meet someone.</div>';
   return h;
 }
 function itemHTML(c,d){
@@ -302,19 +322,20 @@ function vPeople(){
     list=list.filter(function(c){return [c.name,c.company,c.phone,c.notes,c.metAt].join(' ').toLowerCase().indexOf(q)>-1;});}
   if(FILTER.cat)list=list.filter(function(c){return c.category===FILTER.cat;});
   if(FILTER.status)list=list.filter(function(c){return c.status===FILTER.status;});
-  var h='<label class="f"><input type="text" id="q" placeholder="Search name, company, number…" value="'+esc(FILTER.q)+'"></label>';
+  var h=acts([['aPerson','Add person','person'],['aCard','Scan card','card']]);
+  h+='<label class="f"><input type="text" id="q" placeholder="Search name, company, number…" value="'+esc(FILTER.q)+'"></label>';
   h+='<div class="chips" style="margin-bottom:10px"><span class="chip'+(FILTER.cat?'':' on')+'" data-cat="">All</span>'
     +CATS.map(function(c){return '<span class="chip'+(FILTER.cat===c?' on':'')+'" data-cat="'+esc(c)+'">'+esc(c)+'</span>';}).join('')+'</div>';
   h+='<div class="chips" style="margin-bottom:6px"><span class="chip'+(FILTER.status?'':' on')+'" data-st="">Any stage</span>'
     +STATUS.map(function(s){return '<span class="chip'+(FILTER.status===s?' on':'')+'" data-st="'+esc(s)+'">'+esc(s)+'</span>';}).join('')+'</div>';
   h+='<div class="card" style="margin-top:11px">';
   h+= list.length? list.map(function(c){return itemHTML(c,c.nextDue?daysTo(c.nextDue):null);}).join('')
-    : '<div class="empty">No one yet. Tap&nbsp;+ to add the first person.</div>';
+    : '<div class="empty">No one yet. Use <b>Add person</b> above.</div>';
   h+='</div>';
   return h;
 }
 function vMoney(){
-  var h='';
+  var h=acts([['aExpense','Add expense','cash'],['aReceipt','Scan receipt','receipt'],['aRevenue','Log revenue','money']],true);
   h+='<div class="kpi">'
    +'<div class="card"><div class="lab">Cash on hand</div><div class="val">'+money(cash())+'</div></div>'
    +'<div class="card"><div class="lab">Owed to him</div><div class="val" style="color:var(--warn)">'+money(owed())+'</div></div>'
@@ -335,7 +356,7 @@ function vMoney(){
    +'<div class="muted" style="margin-top:7px">Equipment is left out of profit on purpose. It is a one-time asset, not a monthly cost.</div></div></div>';
   var led=L().slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.id>a.id?1:-1);});
   h+='<h3 class="sec">Ledger &middot; '+led.length+' entries</h3><div class="card">';
-  h+= led.length? led.map(ledHTML).join('') : '<div class="empty">Nothing logged yet.</div>';
+  h+= led.length? led.map(ledHTML).join('') : '<div class="empty">Nothing logged yet. Use <b>Add expense</b> or <b>Scan receipt</b> above.</div>';
   h+='</div>';
   return h;
 }
@@ -558,6 +579,16 @@ document.addEventListener('click',function(ev){
   var t=ev.target, el;
   if((el=t.closest('nav.tabs button'))){TAB=el.dataset.tab;render();return;}
   if(t.id==='shX'){closeSheet();return;}
+  if(t.id==='aPerson'){openSheet('New person',contactForm(null));return;}
+  if(t.id==='aCard'){openSheet('New person',contactForm(null));var ci=$('#cardFile');if(ci)ci.click();return;}
+  if(t.id==='aExpense'){openSheet('New entry',ledgerForm(null));return;}
+  if(t.id==='aReceipt'){openSheet('New entry',ledgerForm(null));var ri=$('#recFile');if(ri)ri.click();return;}
+  if(t.id==='aRevenue'){openSheet('Log revenue',ledgerForm(null));
+    var k=$('#l_kind [data-v="revenue"]');
+    if(k){[].forEach.call(k.parentNode.children,function(x){x.classList.remove('on');});k.classList.add('on');}
+    $('#l_cat').value='Job revenue';
+    var pd=$('#l_paid'); if(pd&&pd.classList.contains('on'))pd.classList.remove('on');
+    return;}
   if(t.id==='quickAdd'){
     if(TAB==='money')openSheet('New entry',ledgerForm(null));
     else openSheet('New person',contactForm(null));

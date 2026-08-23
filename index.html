@@ -202,10 +202,61 @@ function decrypt(pack){
   return crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(pack.iv)},KEY,new Uint8Array(pack.ct))
     .then(function(pt){return JSON.parse(new TextDecoder().decode(pt));});
 }
+/* ---------- cloud sync ---------- */
+var syncT=null, SYNCING=false;
+function syncCfg(){return (DB&&DB.sync)||{};}
+function syncOn(){var c=syncCfg();return !!(c.url&&c.secret);}
+function daysSinceSync(){
+  var c=syncCfg(); if(!c.lastPush)return null;
+  return Math.floor((Date.now()-new Date(c.lastPush).getTime())/86400000);
+}
+function cloudCall(action,payload){
+  var c=syncCfg();
+  return fetch(c.url,{method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},   // avoids a CORS preflight Apps Script cannot answer
+    body:JSON.stringify({secret:c.secret,action:action,data:payload})
+  }).then(function(r){return r.json();});
+}
+function pushCloud(quiet){
+  if(!syncOn()||SYNCING)return Promise.resolve(null);
+  SYNCING=true;
+  var snapshot=JSON.parse(JSON.stringify(DB));
+  delete snapshot.sync;                                    // never send the secret back to itself
+  return cloudCall('push',snapshot).then(function(res){
+    SYNCING=false;
+    if(!res||!res.ok){DB.sync.lastErr=(res&&res.error)||'failed';save();if(!quiet)toast('Sync failed');return res;}
+    DB.sync.lastPush=new Date().toISOString(); DB.sync.lastErr=null;
+    // swap stored receipt images for their Drive links, which is what frees the phone
+    var urls=(res.saved&&res.saved.receiptUrls)||{};
+    var freed=0;
+    L().forEach(function(e){
+      if(e.receipt&&urls[e.id]){e.receiptUrl=urls[e.id];delete e.receipt;freed++;}
+    });
+    save();
+    if(!quiet)toast(freed?('Backed up, '+freed+' photo(s) moved to Drive'):'Backed up');
+    render();
+    return res;
+  }).catch(function(err){
+    SYNCING=false;
+    if(DB.sync){DB.sync.lastErr=String(err&&err.message||err);save();}
+    if(!quiet)toast('No connection, will retry');
+    return null;
+  });
+}
+function queueSync(){
+  if(!syncOn())return;
+  clearTimeout(syncT);
+  syncT=setTimeout(function(){pushCloud(true);},4000);
+}
+function pullCloud(){
+  if(!syncOn())return Promise.resolve(null);
+  return cloudCall('pull',null);
+}
 var saveT=null;
 function save(){clearTimeout(saveT);saveT=setTimeout(function(){
   DB.updated=new Date().toISOString();
   encrypt(DB).then(function(p){return kvSet('vault',p);}).catch(function(e){toast('Save failed');console.error(e);});
+  queueSync();
 },250);}
 function b64bytes(b){
   b=b.replace(/-/g,'+').replace(/_/g,'/'); while(b.length%4)b+='=';
@@ -448,7 +499,7 @@ function pipeline(){var t=0;C().forEach(function(c){
 function mrr(){var t=0;C().forEach(function(c){if(c.planAmount>0&&c.status!=='Dormant')t+=+c.planAmount;});return t;}
 
 /* ============================ views ============================ */
-var TAB='today';
+var TAB='today', CURIV=null;
 function render(){
   $$('nav.tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===TAB);});
   $('#ttl').textContent={today:'Today',people:'People',money:'Money',more:'More'}[TAB];
@@ -474,7 +525,16 @@ function vToday(){
     else if(c.status!=='Completed'&&c.status!=='Dormant')noNext.push(c);
   });
   due.sort(function(a,b){return a[0]-b[0];}); soon.sort(function(a,b){return a[0]-b[0];});
-  var h=acts([['aPerson','Add person','person'],['aCard','Scan card','card'],['aRevenue','Log revenue','money'],['aExpense','Add expense','cash'],['aReceipt','Scan receipt','receipt']],true);
+  var h='';
+  var ds0=daysSinceSync();
+  if(!syncOn()&&(C().length||L().length)){
+    h+='<div class="warnbox"><b>No cloud backup.</b> This book only exists on this phone. '
+      +'<span style="color:var(--gold);text-decoration:underline" id="nagSetup">Set one up</span>.</div>';
+  } else if(syncOn()&&ds0!==null&&ds0>=3){
+    h+='<div class="warnbox"><b>Last backed up '+ds0+' days ago.</b> '
+      +'<span style="color:var(--gold);text-decoration:underline" id="nagSync">Back up now</span>.</div>';
+  }
+  h+=acts([['aPerson','Add person','person'],['aCard','Scan card','card'],['aRevenue','Log revenue','money'],['aExpense','Add expense','cash'],['aReceipt','Scan receipt','receipt']],true);
   h+='<div class="kpi">'
    +'<div class="card"><div class="lab">Cash on hand</div><div class="val">'+money(cash())+'</div></div>'
    +'<div class="card"><div class="lab">Owed to him</div><div class="val'+(owed()?'':' sm')+'" style="color:'+(owed()?'var(--warn)':'var(--gold-lt)')+'">'+money(owed())+'</div></div>'
@@ -664,6 +724,20 @@ function invPreview(iv){
    +'For a PDF, tap Save image then use Print from the share sheet.</div>';
   return h;
 }
+function syncForm(){
+  var c=syncCfg();
+  return '<div class="warnbox"><b>Do this on a laptop, it is fiddly on a phone.</b> Full steps are in the repo under apps-script.</div>'
+   +'<div class="muted" style="margin-bottom:13px">1. New Google Sheet &rarr; Extensions &rarr; Apps Script.<br>'
+   +'2. Paste in the Code.gs from the repo, Save.<br>'
+   +'3. Project Settings &rarr; Script Properties &rarr; add <b>SECRET</b> with a long random value.<br>'
+   +'4. Deploy &rarr; New deployment &rarr; Web app, run as <b>Me</b>, access <b>Anyone</b>.<br>'
+   +'5. Copy the /exec link and paste both below.</div>'
+   +'<label class="f"><span>Web app URL</span><input type="text" id="sy_url" value="'+esc(c.url)+'" placeholder="https://script.google.com/macros/s/..../exec"></label>'
+   +'<label class="f"><span>Secret</span><input type="text" id="sy_secret" value="'+esc(c.secret)+'" placeholder="the SECRET you set"></label>'
+   +'<button class="btn" id="syncTest">Test and save</button>'
+   +(syncOn()?'<div style="height:9px"></div><button class="btn bad" id="syncOff">Disconnect</button>':'')
+   +'<div class="muted" style="margin-top:12px">Access has to be <b>Anyone</b> because the phone calls it without a Google login. The secret is what protects it, so make it long and do not paste it anywhere public.</div>';
+}
 function goalForm(){
   var g=goal(), auto=costPctActual();
   return '<label class="f"><span>What do you want to take home in a year, after tax</span>'
@@ -748,9 +822,27 @@ function vMore(){
 function vMoreReal(){
   var photos=0; L().forEach(function(e){if(e.receipt)photos++;});
   C().forEach(function(c){if(c.card)photos++;});
-  return '<div class="card"><h3 class="sec" style="margin-top:0">Backup</h3>'
-   +'<div class="warnbox"><b>This data lives only on this phone.</b> It is encrypted with your passcode. '
-   +'If the phone is lost or the browser data is cleared, it is gone. Export regularly and put the file in Drive.</div>'
+  var ds=daysSinceSync(), c=syncCfg();
+  var cloud;
+  if(!syncOn()){
+    cloud='<div class="card"><h3 class="sec" style="margin-top:0">Cloud backup</h3>'
+     +'<div class="warnbox"><b>Not set up. This book lives only on this phone.</b> '
+     +'iPhones delete web app data for apps they have not seen in about a week, so this can disappear on its own.</div>'
+     +'<button class="btn" id="syncSetup">Connect a Google Sheet</button></div>';
+  } else {
+    var stale = ds===null || ds>=2;
+    cloud='<div class="card"><h3 class="sec" style="margin-top:0">Cloud backup</h3>'
+     +'<div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">'
+     +'<span class="pill '+(stale?'bad':'ok')+'">'+(ds===null?'never synced':(ds===0?'synced today':ds+' days ago'))+'</span>'
+     +(c.lastErr?'<span class="muted">'+esc(String(c.lastErr).slice(0,40))+'</span>':'')+'</div>'
+     +'<div class="muted" style="margin-bottom:11px">Saves to your Google Sheet after every change, and files receipt photos into Drive so they stop filling the phone.</div>'
+     +'<button class="btn" id="syncNow">Back up now</button>'
+     +'<div style="height:9px"></div><button class="btn ghost" id="syncPull">Restore from the sheet</button>'
+     +'<div style="height:9px"></div><button class="btn ghost" id="syncSetup">Change connection</button></div>';
+  }
+  return cloud
+   +'<div class="card"><h3 class="sec" style="margin-top:0">File backup</h3>'
+   +'<div class="muted" style="margin-bottom:11px">A copy you hold yourself, in case the sheet is ever wrong.</div>'
    +'<button class="btn" id="expJson">Export full backup</button>'
    +'<div style="height:9px"></div><button class="btn ghost" id="expCsvC">Export people as CSV</button>'
    +'<div style="height:9px"></div><button class="btn ghost" id="expCsvL">Export ledger as CSV</button>'
@@ -1078,6 +1170,36 @@ document.addEventListener('click',function(ev){
       }
     });
     return;}
+  if(t.id==='syncSetup'||t.id==='nagSetup'){openSheet('Cloud backup',syncForm());return;}
+  if(t.id==='nagSync'){toast('Backing up…');pushCloud();return;}
+  if(t.id==='syncOff'){DB.sync=null;save();closeSheet();render();toast('Disconnected');return;}
+  if(t.id==='syncTest'){
+    var u=$('#sy_url').value.trim(), sec=$('#sy_secret').value.trim();
+    if(!u||!sec){toast('Both fields needed');return;}
+    DB.sync={url:u,secret:sec,lastPush:null,lastErr:null};
+    toast('Testing…');
+    cloudCall('ping',null).then(function(r){
+      if(!r||!r.ok){DB.sync=null;alert('Could not reach it. Check the URL ends in /exec, access is set to Anyone, and the secret matches.');return;}
+      save();
+      return pushCloud().then(function(){closeSheet();render();toast('Connected to '+(r.sheet||'your sheet'));});
+    }).catch(function(){DB.sync=null;alert('Could not reach it. Check the URL and that the deployment is public.');});
+    return;}
+  if(t.id==='syncNow'){toast('Backing up…');pushCloud();return;}
+  if(t.id==='syncPull'){
+    if(!confirm('Replace everything on this phone with what is in the sheet?'))return;
+    toast('Restoring…');
+    pullCloud().then(function(r){
+      if(!r||!r.ok||!r.data){toast('Could not read the sheet');return;}
+      var d=r.data;
+      DB.contacts=(d.contacts||[]).map(function(c){c.quoteAmount=+c.quoteAmount||0;c.planAmount=+c.planAmount||0;
+        c.vehicles=String(c.vehicles||'').split(';').filter(String).map(function(v){return {type:'Car',desc:v.trim(),len:''};});return c;});
+      DB.ledger=(d.ledger||[]).map(function(e){e.amount=+e.amount||0;e.hours=+e.hours||0;
+        e.vehicles=+e.vehicles||0;e.paid=String(e.paid).toLowerCase()==='yes';
+        if(e.date instanceof Date)e.date=e.date.toISOString().slice(0,10);
+        else e.date=String(e.date).slice(0,10);return e;});
+      save();render();toast('Restored '+DB.contacts.length+' contacts, '+DB.ledger.length+' entries');
+    });
+    return;}
   if(t.id==='goalSet'){openSheet('Your number',goalForm());return;}
   if(t.id==='goalSave'){
     DB.goal={target:+$('#g_target').value||0,taxPct:+$('#g_tax').value||0,
@@ -1149,6 +1271,8 @@ if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(
   .then(function(d){PENDING=d;})
   .catch(function(){})
   .then(initLock);
+document.addEventListener('visibilitychange',function(){if(document.hidden)pushCloud(true);});
+window.addEventListener('online',function(){pushCloud(true);});
 </script>
 </body>
 </html>

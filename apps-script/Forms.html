@@ -313,6 +313,7 @@ document.addEventListener('click',function(ev){
   if((el=t.closest('#c_cat .chip'))||(el=t.closest('#c_status .chip'))||(el=t.closest('#l_kind .chip'))){
     [].forEach.call(el.parentNode.children,function(z){z.classList.remove('on');});el.classList.add('on');return;}
   if(t.id==='l_paid'){t.classList.toggle('on');return;}
+  if((el=t.closest('[data-seg]'))){WI.seg=el.dataset.seg;WI.price=null;render();return;}
   if((el=t.closest('[data-cat]'))){FILTER.cat=el.dataset.cat;render();return;}
   if((el=t.closest('[data-st]'))){FILTER.status=el.dataset.st;render();return;}
 
@@ -411,7 +412,7 @@ document.addEventListener('input',function(ev){
     WI.price=+($('#wiPrice')||{}).value||null;
     WI.cars=+($('#wiCars')||{}).value||null;
     var o=$('#wiOut'); if(o)o.innerHTML=whatIfOut();
-    var pl=$('#wiPriceL'); if(pl){var w=whatIf();pl.textContent=money(w.price)+(w.avg?' · typical '+money(w.avg):'');}
+    var pl=$('#wiPriceL'); if(pl)pl.textContent=money(WI.price||0);
     var cl=$('#wiCarsL'); if(cl)cl.textContent=WI.cars;
     return;
   }

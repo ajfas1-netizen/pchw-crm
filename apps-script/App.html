@@ -105,6 +105,12 @@ h3.sec{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--
 .math b{color:var(--gold-lt)}
 .math .big{display:block;color:var(--bone);font-size:17px;font-weight:700;margin-top:7px}
 .bar2{height:7px;background:#0B1E38;border-radius:99px;overflow:hidden;margin-top:8px}
+.slidewrap{position:relative;padding-bottom:20px}
+.slidewrap input[type=range]{width:100%;accent-color:var(--gold);position:relative;z-index:2}
+.smark{position:absolute;top:-2px;transform:translateX(-50%);pointer-events:none;z-index:1;text-align:center}
+.smark i{display:block;width:2px;height:22px;background:var(--bone);margin:0 auto;opacity:.85;border-radius:2px}
+.smark b{display:block;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--bone);
+ white-space:nowrap;margin-top:1px;opacity:.85}
 .bar2 i{display:block;height:100%;background:linear-gradient(90deg,#8E6F2E,var(--gold));border-radius:99px}
 .rec{display:flex;align-items:center;gap:10px}
 .recdot{width:11px;height:11px;border-radius:50%;background:var(--bad);animation:p 1s infinite}
@@ -151,9 +157,11 @@ var WEIGHT={'New':.1,'Contacted':.2,'Quoted':.4,'Booked':.9,'Follow up':.25,'Com
 var SOURCES=['Met in person','Lot','Neighborhood','Referral','Website','Google','Repeat customer','Other'];
 var EXPCATS=['Consumables','Supplies','Marketing','Fuel','Insurance','Software','Fees','Other'];
 var VTYPES=['Car','Truck / SUV','Boat','RV / coach','Fleet vehicle'];
-var SERVICES=[['Express Hand Wash',75],['Reset Wash',75],['The Full Reset',225],['Quick Detail',295],
- ['Gloss Enhancement',495],['LUMEN 3yr Ceramic',1095],['MERIDIAN 5yr Ceramic',1995],
- ['ZENITH 9yr Ceramic',3450],['PPF Full Front',2195]];
+/* what he actually sells today, in the order he sells it. Ceramic and PPF are
+   deliberately absent: he has not landed one yet, and quoting himself work he
+   is not doing makes every projection a fantasy. Add them when they are real. */
+var SERVICES=[['Reset Wash',75],['Express Hand Wash',75],['Wash & Seal',115],
+ ['Interior Refresh',135],['The Full Reset',225],['Quick Detail',295]];
 var GOAL_DEF={target:0,taxPct:25,daysPerWeek:5,weeksPerYear:50,costPct:null};
 var BIZ={name:'Striking Details LLC',addr:'3560 SW Racquet Club Way',city:'Palm City, FL 34990',
  phone:'(561) 275-8846',web:'palmcityhandwash.com'};
@@ -312,10 +320,28 @@ function medianPerCar(){
   var i=Math.floor(v.length/2);
   return v.length%2 ? v[i] : (v[i-1]+v[i])/2;
 }
+function avgPerCar(cat){
+  var jobs=L().filter(function(e){
+    if(e.kind!=='revenue'||!(+e.amount>0))return false;
+    if(!cat)return true;
+    var c=findC(e.contactId);
+    return !!c && c.category===cat;
+  });
+  var rev=0,cars=0;
+  jobs.forEach(function(e){rev+=+e.amount;cars+=jobVehicles(e);});
+  return {n:jobs.length, cars:cars, avg: cars?rev/cars:0};
+}
+function segsWithWork(){
+  var out=[];
+  CATS.forEach(function(c){ var a=avgPerCar(c); if(a.n)out.push([c,a]); });
+  return out;
+}
 function whatIf(){
   var st=jobStats(), m=goalMath();
-  var med=medianPerCar();
-  var avg = med>0 ? Math.round(med) : 100;   // the wash he actually does all day
+  // the slider opens on the same number the marker shows, otherwise picking a
+  // customer type moves the mark but not the handle and the card contradicts itself
+  var seg=avgPerCar(WI.seg||'');
+  var avg = seg.n>=1 ? Math.round(seg.avg) : 100;   // any real job beats a guess
   if(avg>600)avg=600; if(avg<40)avg=40;
   var cars = WI.cars!==null ? WI.cars : 5;
   var price = WI.price!==null ? WI.price : avg;
@@ -328,13 +354,35 @@ function whatIf(){
   return {avg:avg,price:price,cars:cars,perDay:perDay,year:year,take:take,
           need:need,target:m.target,perDayTarget:m.perDay,keep:keep};
 }
+function segChips(){
+  var segs=segsWithWork();
+  if(!segs.length)return '';
+  var all=avgPerCar('');
+  var h='<div class="chips" style="margin-top:12px"><span class="chip'+(WI.seg?'':' on')+'" data-seg="">All &middot; '+money(all.avg)+'</span>';
+  h+=segs.map(function(p){
+    return '<span class="chip'+(WI.seg===p[0]?' on':'')+'" data-seg="'+esc(p[0])+'">'+esc(p[0])+' &middot; '+money(p[1].avg)+'</span>';
+  }).join('')+'</div>';
+  return h;
+}
+function markerHTML(){
+  var a=avgPerCar(WI.seg||'');
+  if(!a.avg)return '';
+  var v=Math.max(40,Math.min(600,a.avg));
+  var pct=(v-40)/(600-40)*100;
+  var label=(WI.seg||'Your')+' average '+money(a.avg);
+  return '<span class="smark" style="left:'+pct.toFixed(1)+'%"><i></i><b>'+esc(label)+'</b></span>';
+}
 function whatIfCard(){
   var w=whatIf();
   return '<div class="card"><h3 class="sec" style="margin-top:0">What if</h3>'
    +'<div id="wiOut">'+whatIfOut()+'</div>'
+   +segChips()
    +'<div style="margin-top:14px"><div style="display:flex;justify-content:space-between"><span class="lab">Price a car</span>'
-   +'<span class="muted" id="wiPriceL">'+money(w.price)+(w.avg?' · typical '+money(w.avg):'')+'</span></div>'
-   +'<input type="range" id="wiPrice" min="40" max="600" step="5" value="'+w.price+'" style="width:100%;accent-color:var(--gold)"></div>'
+   +'<span class="muted" id="wiPriceL">'+money(w.price)+'</span></div>'
+   +'<div class="slidewrap">'
+   +'<input type="range" id="wiPrice" min="40" max="600" step="5" value="'+w.price+'">'
+   +markerHTML()
+   +'</div></div>'
    +'<div style="margin-top:10px"><div style="display:flex;justify-content:space-between"><span class="lab">Cars a day</span>'
    +'<span class="muted" id="wiCarsL">'+w.cars+'</span></div>'
    +'<input type="range" id="wiCars" min="1" max="20" step="1" value="'+w.cars+'" style="width:100%;accent-color:var(--gold)"></div>'
@@ -411,7 +459,7 @@ function nextInvNo(){var n=1000;INV().forEach(function(i){var m=/SD-(\d+)/.exec(
 function vehLabel(v){return [v.year,v.make,v.model,v.color?'('+v.color+')':''].filter(Boolean).join(' ').trim();}
 
 /* =================== views =================== */
-var TAB='home', CURIV=null, FILTER={q:'',cat:'',status:''}, WI={price:null,cars:null};
+var TAB='home', CURIV=null, FILTER={q:'',cat:'',status:''}, WI={price:null,cars:null,seg:''};
 var IC={
  person:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.6 3.1-6.4 7-6.4s7 2.8 7 6.4"/></svg>',
  card:'<svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M6 10h5M6 13.5h3M15.5 10.5h3M15.5 14h3"/></svg>',
@@ -560,6 +608,22 @@ function vInsights(){
    +kv('Average month',money(s.monthlySpend))+kv('Months tracked',String(s.months))+'</div></div>';
   return h;
 }
+/* only talk about a bigger job once he has actually landed one */
+function biggestJob(){
+  var jobs=L().filter(function(e){return e.kind==='revenue'&&+e.amount>0;});
+  if(!jobs.length)return null;
+  var med=medianPerCar()||100;
+  var best=jobs.slice().sort(function(a,b){return b.amount-a.amount;})[0];
+  return (+best.amount >= med*4) ? best : null;   // meaningfully bigger than a normal car
+}
+function bigJobLine(m){
+  var b=biggestJob();
+  if(!b) return '<div class="muted" style="margin-top:9px">That is the job. Washes, done properly, over and over.</div>';
+  var washes=Math.round(b.amount/75);
+  return '<div class="muted" style="margin-top:9px">Your biggest so far, <b style="color:var(--gold-lt)">'
+   +esc(String(b.memo||'that job').slice(0,30))+' at '+money(b.amount)+'</b>, was worth '+washes+' washes'
+   +(m.perDay>0?', about '+(Math.round(b.amount/m.perDay*10)/10)+' days':'')+'.</div>';
+}
 function goalCard(){
   var m=goalMath();
   if(!m.target)
@@ -585,7 +649,7 @@ function goalCard(){
    +'<span style="color:var(--gold-lt);font-weight:700">'+(Math.round(a*10)/10)+' a day &middot; '+Math.round(a*m.days)+' a week</span></div>'
    +'<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:14px"><span>Washes at $100</span>'
    +'<span style="color:var(--gold-lt);font-weight:700">'+(Math.round(b*10)/10)+' a day &middot; '+Math.round(b*m.days)+' a week</span></div>'
-   +'<div class="muted" style="margin-top:9px">That is the day job. One MERIDIAN at $1,995 covers <b style="color:var(--gold-lt)">'+Math.round(1995/75)+' washes</b>, about '+(Math.round(1995/m.perDay*10)/10)+' days.</div></div>';
+   +bigJobLine(m)+'</div>';
   h+=(p?'<div class="muted" style="margin-top:11px">Billed '+money(p.got)+' in '+p.days+' days against '+money(p.expected)+' to be on pace.</div>'
        :'<div class="muted" style="margin-top:11px">Pace starts after a couple of weeks of jobs.</div>');
   h+='<div style="height:11px"></div><button class="btn ghost sm" id="goalSet">Adjust</button></div>';

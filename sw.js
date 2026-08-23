@@ -1,4 +1,4 @@
-var C='sdcrm-v3';
+var C='sdcrm-v4';
 var F=['./','./index.html','./manifest.webmanifest','./icon-180.png','./icon-512.png','./icon-32.png','./icon-1024.png'];
 self.addEventListener('install',function(e){
   self.skipWaiting();

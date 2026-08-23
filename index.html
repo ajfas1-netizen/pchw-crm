@@ -164,7 +164,18 @@ function daysTo(s){if(!s)return null;var a=new Date(s+'T00:00:00'),b=new Date(to
 function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on');},2000);}
 
 /* ============================ crypto + storage ============================ */
-var KEY=null, DB=null, SALT=null;
+var KEY=null, DB=null, SALT=null, PENDING=null;
+(function(){
+  try{
+    var m=(location.hash||'').match(/[#&]load=([^&]+)/);
+    if(!m)return;
+    var json=decodeURIComponent(escape(atob(m[1].replace(/-/g,'+').replace(/_/g,'/'))));
+    var d=JSON.parse(json);
+    if(d&&d.contacts&&d.ledger)PENDING=d;
+  }catch(e){}
+  // strip it from the address bar either way, so it is not left lying around
+  if(location.hash)history.replaceState(null,'',location.pathname+location.search);
+})();
 function idb(){return new Promise(function(res,rej){var r=indexedDB.open('sdcrm',1);
   r.onupgradeneeded=function(){r.result.createObjectStore('kv');};
   r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};});}
@@ -233,6 +244,14 @@ function doUnlock(){
 function start(){
   $('#lock').classList.add('hide'); $('#app').classList.remove('hide');
   $('#pw').value='';$('#pw2').value='';$('#lockErr').textContent='';
+  if(PENDING){
+    var had=(C().length||L().length);
+    var msg=had
+      ? 'This setup link carries '+PENDING.contacts.length+' contact(s) and '+PENDING.ledger.length+' ledger entries.\n\nThis phone already has data. Replace it?'
+      : 'Load the starting data from this link? '+PENDING.contacts.length+' contact(s) and '+PENDING.ledger.length+' ledger entries.';
+    if(confirm(msg)){DB=PENDING;save();toast('Loaded');}
+    PENDING=null;
+  }
   render();
 }
 

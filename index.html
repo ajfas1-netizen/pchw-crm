@@ -165,15 +165,10 @@ function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearT
 
 /* ============================ crypto + storage ============================ */
 var KEY=null, DB=null, SALT=null, PENDING=null;
+var PENDING_RAW=null;
 (function(){
-  try{
-    var m=(location.hash||'').match(/[#&]load=([^&]+)/);
-    if(!m)return;
-    var json=decodeURIComponent(escape(atob(m[1].replace(/-/g,'+').replace(/_/g,'/'))));
-    var d=JSON.parse(json);
-    if(d&&d.contacts&&d.ledger)PENDING=d;
-  }catch(e){}
-  // strip it from the address bar either way, so it is not left lying around
+  var m=(location.hash||'').match(/[#&]load=([^&]+)/);
+  if(m)PENDING_RAW=m[1];
   if(location.hash)history.replaceState(null,'',location.pathname+location.search);
 })();
 function idb(){return new Promise(function(res,rej){var r=indexedDB.open('sdcrm',1);
@@ -206,16 +201,35 @@ function save(){clearTimeout(saveT);saveT=setTimeout(function(){
   DB.updated=new Date().toISOString();
   encrypt(DB).then(function(p){return kvSet('vault',p);}).catch(function(e){toast('Save failed');console.error(e);});
 },250);}
-function loadFromLink(str){
-  try{
-    var m=String(str||'').match(/load=([A-Za-z0-9_\-]+)/);
-    var b=m?m[1]:String(str||'').trim();
-    b=b.replace(/-/g,'+').replace(/_/g,'/');
-    while(b.length%4)b+='=';
-    var d=JSON.parse(decodeURIComponent(escape(atob(b))));
-    if(!d||!d.contacts||!d.ledger)throw 0;
-    return d;
-  }catch(e){return null;}
+function b64bytes(b){
+  b=b.replace(/-/g,'+').replace(/_/g,'/'); while(b.length%4)b+='=';
+  var bin=atob(b), a=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);
+  return a;
+}
+function loadFromLink(str){          // -> Promise<obj|null>
+  var raw=String(str||'').trim();
+  var m=raw.match(/load=([A-Za-z0-9_\-]+)/);
+  var payload=m?m[1]:raw;
+  var gz=false;
+  if(payload.charAt(0)==='z'){gz=true;payload=payload.slice(1);}
+  var bytes;
+  try{bytes=b64bytes(payload);}catch(e){return Promise.resolve(null);}
+  var text;
+  if(gz){
+    if(typeof DecompressionStream==='undefined')return Promise.resolve(null);
+    try{
+      var ds=new DecompressionStream('gzip');
+      var stream=new Blob([bytes]).stream().pipeThrough(ds);
+      text=new Response(stream).text();
+    }catch(e){return Promise.resolve(null);}
+  } else {
+    try{text=Promise.resolve(new TextDecoder().decode(bytes));}
+    catch(e){return Promise.resolve(null);}
+  }
+  return text.then(function(t){
+    try{var d=JSON.parse(t); return (d&&d.contacts&&d.ledger)?d:null;}catch(e){return null;}
+  }).catch(function(){return null;});
 }
 function seed(){
   return {v:1,created:new Date().toISOString(),contacts:[],ledger:[]};
@@ -315,7 +329,7 @@ function vToday(){
     else if(c.status!=='Completed'&&c.status!=='Dormant')noNext.push(c);
   });
   due.sort(function(a,b){return a[0]-b[0];}); soon.sort(function(a,b){return a[0]-b[0];});
-  var h=acts([['aPerson','Add person','person'],['aCard','Scan card','card']]);
+  var h=acts([['aPerson','Add person','person'],['aCard','Scan card','card'],['aRevenue','Log revenue','money'],['aExpense','Add expense','cash'],['aReceipt','Scan receipt','receipt']],true);
   h+='<div class="kpi">'
    +'<div class="card"><div class="lab">Cash on hand</div><div class="val">'+money(cash())+'</div></div>'
    +'<div class="card"><div class="lab">Owed to him</div><div class="val'+(owed()?'':' sm')+'" style="color:'+(owed()?'var(--warn)':'var(--gold-lt)')+'">'+money(owed())+'</div></div>'
@@ -701,11 +715,12 @@ document.addEventListener('click',function(ev){
     dl('striking-ledger-'+stamp()+'.csv',csv(rows2),'text/csv');toast('CSV saved');return;}
   if(t.id==='impBtn'){$('#impFile').click();return;}
   if(t.id==='pasteBtn'){
-    var v=prompt('Paste the setup link you were sent'); if(!v)return;
-    var d=loadFromLink(v);
-    if(!d){alert('That does not look like a setup link. Copy the whole thing, including the part after the #.');return;}
-    if(!confirm('Load '+d.contacts.length+' contact(s) and '+d.ledger.length+' ledger entries? This replaces what is on this phone.'))return;
-    DB=d;save();render();toast('Loaded');
+    var v=prompt('Paste the setup link or code you were sent'); if(!v)return;
+    loadFromLink(v).then(function(d){
+      if(!d){alert('That does not look like a setup code. Copy the whole thing, including everything after the #.');return;}
+      if(!confirm('Load '+d.contacts.length+' contact(s) and '+d.ledger.length+' ledger entries? This replaces what is on this phone.'))return;
+      DB=d;save();render();toast('Loaded');
+    });
     return;}
   if(t.id==='chpw'){
     var a=prompt('New passcode, at least 4 characters'); if(!a||a.length<4)return;
@@ -758,7 +773,10 @@ document.addEventListener('input',function(ev){
 });
 
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
-initLock();
+(PENDING_RAW?loadFromLink(PENDING_RAW):Promise.resolve(null))
+  .then(function(d){PENDING=d;})
+  .catch(function(){})
+  .then(initLock);
 </script>
 </body>
 </html>

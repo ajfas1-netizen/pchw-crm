@@ -1,41 +1,54 @@
-# Cloud backup setup
+# Striking Details — Book
 
-Do this on a laptop. Ten minutes, once.
+Server app. The Google Sheet is the database, Google handles the login, and
+**nothing is stored on anyone's phone.** A wet or lost phone costs nothing.
 
-1. **New Google Sheet.** Name it `Striking Details Book`.
-2. **Extensions → Apps Script.** Delete whatever is there, paste in all of `Code.gs`, Save.
-3. **Project Settings** (cog, left side) → **Script Properties** → **Add script property**
-   - Property: `SECRET`
-   - Value: a long random string you invent. Twenty-plus characters. Keep it somewhere safe.
-4. **Deploy → New deployment → Web app**
-   - Description: anything
-   - Execute as: **Me**
-   - Who has access: **Anyone**
-   - Deploy, then Authorize when Google asks. It will warn the app is unverified — that is
-     normal for your own script. Advanced → Go to project → Allow.
-5. Copy the **Web app URL**. It ends in `/exec`.
-6. In the Book app: **More → Cloud backup → Connect a Google Sheet**. Paste the URL and the
-   same SECRET. Tap Test and save.
+## Setup, once, on a laptop
 
-## Why access has to be "Anyone"
+1. **New Google Sheet** → name it `Striking Details Book`.
+2. **Extensions → Apps Script.** Delete what's there.
+3. Create three files in the editor and paste each one in:
+   - `Code.gs` ← paste `Code.gs`
+   - `App.html` ← **File → New → HTML file**, name it `App`, paste `App.html`
+   - `Forms.html` ← **File → New → HTML file**, name it `Forms`, paste `Forms.html`
+   Save.
+4. **Run** the function `setupSheet` once (pick it from the dropdown, press Run).
+   Authorise when Google asks. It will warn the app is unverified — that is normal
+   for your own script: **Advanced → Go to project → Allow.**
+   This creates the Contacts, Ledger, Invoices and Settings tabs.
+5. **Project Settings → Script Properties → Add:**
+   - `ALLOWED` = the emails allowed in, comma separated
+     e.g. `nick@gmail.com, ajfas1@gmail.com`
+6. **Deploy → New deployment → Web app**
+   - Execute as: **User accessing the web app**
+   - Who has access: **Anyone with a Google Account**
+   - Deploy, copy the `/exec` URL.
+7. **Share the Sheet** with Nick as an **Editor**. The script runs as whoever is
+   signed in, so he needs access to the Sheet itself.
+8. Send Nick the `/exec` link. He opens it, signs in with Google, and it works.
+   On iPhone: **Share → Add to Home Screen** to keep it.
 
-The phone calls this without signing into Google, so Google has to let anonymous requests
-through. The SECRET is what actually protects it — every request is rejected without it.
-Treat that string like a password. Never put it in a repo, a screenshot or a text message.
+## Why "Execute as: User accessing"
 
-If you ever think it leaked: change the SECRET in Script Properties, then re-enter the new
-one in the app. Old requests stop working immediately.
+That is what lets the app know who is using it. `Session.getActiveUser()` only
+returns an email under that setting, which is how the `ALLOWED` check works and
+how you get two logins rather than one shared password. The cost is that each
+person needs access to the Sheet.
 
-## What ends up in the sheet
+## What lives where
 
-- **Contacts**, **Ledger**, **Invoices** tabs, rewritten on every sync
-- **Meta** tab with the last sync time and the take-home target
-- Receipt photos go to a Drive folder called `Striking Details receipts`, and the sheet holds
-  the link. This is what stops photos filling the phone.
+| | |
+|---|---|
+| Contacts, Ledger, Invoices, Settings | tabs in the Sheet |
+| Receipt and business-card photos | Drive folder `Striking Details photos`, link stored in the Sheet |
+| Anything on the phone | nothing |
 
-## Important
+Read the Sheet, chart it, hand it to an accountant. Edits made directly in the
+Sheet are read back by the app on next load, so light corrections are fine —
+just don't rename the header row.
 
-The **phone is the source of truth.** Each sync overwrites the sheet with what is on the
-phone. Read the sheet, build charts off it, but do not edit it and expect the changes to come
-back — the next sync will wipe them. Use **Restore from the sheet** only when moving to a new
-phone or recovering from a loss.
+## Updating the app later
+
+Paste the new `Code.gs` / `App.html` / `Forms.html` over the old ones, then
+**Deploy → Manage deployments → edit → Version: New version → Deploy.** Skipping
+the new-version step is the usual reason a change does not appear.

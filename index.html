@@ -685,18 +685,29 @@ function ledHTML(e){
   var sign=(e.kind==='revenue'||e.kind==='capital')?'+':'−';
   var col=e.kind==='revenue'?'var(--ok)':(e.kind==='capital'?'var(--gold-lt)':'var(--bone)');
   var tags=[e.cat];
+  if(e.kind==='revenue'){var nv=jobVehicles(e); if(nv>1)tags.push(nv+' vehicles');
+    if(+e.hours>0)tags.push(e.hours+'h');}
   if(e.kind==='equipment')tags.push('asset');
   if(e.kind==='revenue'&&!e.paid)tags.push('UNPAID');
   return '<div class="item" data-led="'+e.id+'"><div class="bd"><div class="nm">'+esc(e.memo||e.cat||e.kind)+'</div>'
    +'<div class="sub">'+fmtDate(e.date)+' &middot; '+esc(tags.filter(Boolean).join(' · '))+(e.receipt?' &middot; receipt':'')+'</div></div>'
    +'<div class="rt" style="color:'+col+';font-weight:700;font-size:15px">'+sign+money(e.amount)+'</div></div>';
 }
+function jobVehicles(e){
+  if(+e.vehicles>0)return +e.vehicles;
+  var m=/SD-\d+/.exec(e.memo||'');
+  if(m){var iv=INV().filter(function(x){return x.no===m[0];})[0];
+        if(iv&&(iv.items||[]).length)return iv.items.length;}
+  var c=findC(e.contactId);
+  if(c&&(c.vehicles||[]).length)return c.vehicles.length;
+  return 1;
+}
 function jobStats(){
   var jobs=L().filter(function(e){return e.kind==='revenue';});
   var n=jobs.length, rev=sum(jobs);
   var hrs=jobs.reduce(function(t,e){return t+(+e.hours||0);},0);
   var withHrs=jobs.filter(function(e){return +e.hours>0;});
-  var cars=0; jobs.forEach(function(e){var c=findC(e.contactId); cars+=c&&(c.vehicles||[]).length?c.vehicles.length:1;});
+  var cars=0; jobs.forEach(function(e){ cars+=jobVehicles(e); });
   var months={}; L().filter(function(e){return e.kind==='expense';}).forEach(function(e){
     var k=(e.date||'').slice(0,7); months[k]=(months[k]||0)+(+e.amount||0);});
   var mk=Object.keys(months); var mAvg=mk.length?mk.reduce(function(t,k){return t+months[k];},0)/mk.length:0;
@@ -713,7 +724,8 @@ function vInsights(){
     +'<div class="empty">Log a few jobs and this fills in: hourly rate, cost per car, monthly spend.</div></div>';
   var h='<div class="card"><h3 class="sec" style="margin-top:0">Per job</h3><div class="row2">'
    +kv('Jobs billed',String(s.jobs))+kv('Average job',money(s.avgJob))
-   +kv('Vehicles done',String(s.cars))+kv('Revenue per vehicle',money(s.perCar))+'</div></div>';
+   +kv('Vehicles done',String(s.cars))+kv('Revenue per vehicle',money(s.perCar))+'</div>'
+   +'<div class="muted" style="margin-top:9px">Vehicle count comes from what you type on the job, or the invoice lines, or the contact. Type it on the job to be sure.</div></div>';
   h+='<div class="card"><h3 class="sec" style="margin-top:0">Time</h3>';
   if(s.hourly===null){
     h+='<div class="muted">Add <b>hours</b> when you log revenue and this shows your real hourly rate. '
@@ -874,7 +886,8 @@ function ledgerForm(e,presetContact){
   h+='<label class="f"><span>What was it</span><input type="text" id="l_memo" value="'+esc(e.memo)+'" placeholder="Pads, coating, pressure washer…"></label>';
   h+='<label class="f"><span>Linked person, optional</span><select id="l_contact"><option value="">—</option>'
     +C().map(function(c){return '<option value="'+c.id+'"'+(e.contactId===c.id?' selected':'')+'>'+esc(c.name||'Unnamed')+'</option>';}).join('')+'</select></label>';
-  h+='<label class="f"><span>Hours on the job, optional</span><input type="number" inputmode="decimal" id="l_hours" value="'+(e.hours||'')+'" placeholder="e.g. 6.5"></label>';
+  h+='<div class="row2"><label class="f"><span>Vehicles done</span><input type="number" inputmode="numeric" id="l_veh" value="'+(e.vehicles||'')+'" placeholder="1"></label>'
+    +'<label class="f"><span>Hours on the job</span><input type="number" inputmode="decimal" id="l_hours" value="'+(e.hours||'')+'" placeholder="e.g. 6.5"></label></div>';
   h+='<div class="chips" style="margin-bottom:13px"><span class="chip'+(e.paid!==false?' on':'')+'" id="l_paid">'
     +'Paid / settled</span></div>';
   h+='<h3 class="sec">Receipt</h3>';
@@ -1009,7 +1022,7 @@ document.addEventListener('click',function(ev){
     e5.kind=kk?kk.dataset.v:'expense';
     e5.amount=+$('#l_amount').value||0; e5.date=$('#l_date').value||today();
     e5.cat=$('#l_cat').value.trim(); e5.memo=$('#l_memo').value.trim();
-    e5.contactId=$('#l_contact').value; e5.hours=+$('#l_hours').value||0;
+    e5.contactId=$('#l_contact').value; e5.hours=+$('#l_hours').value||0; e5.vehicles=+$('#l_veh').value||0;
     e5.paid=$('#l_paid').classList.contains('on');
     if(!e5.amount){toast('Enter an amount');return;}
     save(); closeSheet(); render(); toast('Logged'); return;}

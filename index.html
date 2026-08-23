@@ -152,6 +152,10 @@ var STATUS=['New','Contacted','Quoted','Booked','Completed','Follow up','Dormant
 var WEIGHT={'New':.1,'Contacted':.2,'Quoted':.4,'Booked':.9,'Follow up':.25,'Completed':0,'Dormant':0};
 var SOURCES=['Met in person','Lot','Neighborhood','Referral','Website','Google','Repeat customer','Other'];
 var EXPCATS=['Consumables','Marketing','Fuel','Insurance','Software','Fees','Supplies','Other'];
+var SERVICES=[['Express Hand Wash',75],['The Full Reset',225],['Quick Detail',295],
+ ['Gloss Enhancement',495],['LUMEN 3yr Ceramic',1095],['MERIDIAN 5yr Ceramic',1995],
+ ['ZENITH 9yr Ceramic',3450],['PPF Full Front',2195]];
+var GOAL_DEF={target:0,taxPct:25,daysPerWeek:5,weeksPerYear:50,costPct:null};
 var VTYPES=['Car','Truck / SUV','Boat','RV / coach','Fleet vehicle'];
 var $=function(s,r){return (r||document).querySelector(s);};
 var $$=function(s,r){return [].slice.call((r||document).querySelectorAll(s));};
@@ -296,6 +300,45 @@ function opEx(){return sum(L().filter(function(e){return e.kind==='expense';}));
 function equip(){return sum(L().filter(function(e){return e.kind==='equipment';}));}
 function capital(){return sum(L().filter(function(e){return e.kind==='capital';}));}
 function profit(){return revAll()-opEx();}
+function goal(){var g=DB.goal||{};var o={};for(var k in GOAL_DEF)o[k]=(g[k]===undefined||g[k]===null)?GOAL_DEF[k]:g[k];
+  if(g.costPct!==undefined&&g.costPct!==null)o.costPct=g.costPct; return o;}
+function costPctActual(){
+  // only trust this once there is a real trading history, otherwise start-up
+  // spending swamps a couple of jobs and the ratio is meaningless
+  var r=revAll(), jobs=L().filter(function(e){return e.kind==='revenue';}).length;
+  if(r<2000||jobs<5)return null;
+  return Math.max(5,Math.min(60,Math.round(100*opEx()/r)));
+}
+function costPctUsed(){var g=goal();
+  if(g.costPct!==null&&g.costPct!==undefined)return g.costPct;
+  var a=costPctActual(); return a===null?20:a;}
+function goalMath(){
+  var g=goal(), c=costPctUsed()/100, t=g.taxPct/100;
+  var keep=(1-c)*(1-t);
+  var gross = (g.target>0 && keep>0) ? g.target/keep : 0;
+  var wks=g.weeksPerYear||50, dpw=g.daysPerWeek||5;
+  return {target:g.target, taxPct:g.taxPct, costPct:Math.round(c*100),
+    gross:gross, perMonth:gross/12, perWeek:gross/wks, perDay:gross/(wks*dpw),
+    keepRate:keep, weeks:wks, days:dpw};
+}
+function yearRevenue(){var y=today().slice(0,4);
+  return sum(L().filter(function(e){return e.kind==='revenue'&&(e.date||'').slice(0,4)===y;}));}
+function firstLedgerDate(){
+  var ds=L().map(function(e){return e.date;}).filter(Boolean).sort();
+  return ds.length?ds[0]:null;
+}
+function yearPace(){
+  // pace against how long he has actually been trading, not against 1 January,
+  // and stay quiet until there is enough history for it to mean anything
+  var m=goalMath(); if(!m.gross)return null;
+  var f=firstLedgerDate(); if(!f)return null;
+  var days=Math.floor((new Date(today()+'T00:00:00')-new Date(f+'T00:00:00'))/86400000)+1;
+  if(days<14)return null;
+  var expected=m.gross*(days/365);
+  var got=yearRevenue();
+  return {expected:expected, got:got, diff:got-expected, days:days,
+          pct:expected>0?Math.round(100*got/expected):0};
+}
 function forecast(){var t=0;C().forEach(function(c){
   if(c.quoteAmount>0&&c.status!=='Completed'&&c.status!=='Dormant')t+=c.quoteAmount*(WEIGHT[c.status]||0);});return t;}
 function pipeline(){var t=0;C().forEach(function(c){
@@ -386,6 +429,7 @@ function vMoney(){
    +'<div class="card"><div class="lab">Billed this month</div><div class="val sm">'+money(revMTD())+'</div></div>'
    +'<div class="card"><div class="lab">Spent this month</div><div class="val sm">'+money(expMTD())+'</div></div>'
    +'</div>';
+  h+=goalCard();
   h+='<div class="card"><div class="lab" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">Forecast</div>'
    +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px">'
    +'<div><div class="val" style="font-size:23px;font-weight:700;color:var(--gold-lt)">'+money(forecast())+'</div>'
@@ -403,6 +447,54 @@ function vMoney(){
   h+= led.length? led.map(ledHTML).join('') : '<div class="empty">Nothing logged yet. Use <b>Add expense</b> or <b>Scan receipt</b> above.</div>';
   h+='</div>';
   return h;
+}
+function goalCard(){
+  var m=goalMath();
+  if(!m.target){
+    return '<div class="card" id="goalCard"><div class="lab" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">Your number</div>'
+     +'<div class="muted" style="margin:7px 0 12px">Set what you want to take home this year and this works backwards to a daily number.</div>'
+     +'<button class="btn" id="goalSet">Set my target</button></div>';
+  }
+  var p=yearPace();
+  var chip = p ? '<span class="pill '+(p.diff>=0?'ok':'bad')+'">'+(p.diff>=0?'ahead ':'behind ')+money(Math.abs(p.diff))+'</span>' : '';
+  var h='<div class="card" id="goalCard">'
+   +'<div style="display:flex;align-items:baseline;gap:8px"><div class="lab" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex:1">Take home '+money(m.target)+' a year</div>'+chip+'</div>'
+   +'<div class="row3" style="margin-top:11px">'
+   +kv('Per day',money(m.perDay))+kv('Per week',money(m.perWeek))+kv('Per month',money(m.perMonth))+'</div>'
+   +'<div class="muted" style="margin-top:10px">That is <b style="color:var(--gold-lt)">'+money(m.gross)+'</b> of invoicing over the year, because '
+   +m.costPct+'% goes on supplies and '+m.taxPct+'% of what is left goes to tax. You keep about '+Math.round(m.keepRate*100)+' cents on the dollar.</div>';
+  // what the weekly number looks like in actual jobs
+  var wk=m.perWeek;
+  var picks=SERVICES.filter(function(x){return x[1]<=Math.max(wk,75);}).slice(-3);
+  if(!picks.length)picks=[SERVICES[0]];
+  h+='<div style="margin-top:13px;padding-top:11px;border-top:1px solid rgba(255,255,255,.08)">'
+   +'<div class="lab" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">A week looks like</div>'
+   +picks.map(function(sv){
+      var n=wk/sv[1];
+      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13.5px">'
+       +'<span>'+esc(sv[0])+'</span><span style="color:var(--gold-lt);font-weight:700">'
+       +(n>=1?(Math.round(n*10)/10)+' a week':'1 every '+Math.round(1/n)+' weeks')+'</span></div>';
+    }).join('')
+   +'</div>';
+  if(p)h+='<div class="muted" style="margin-top:11px">Billed '+money(p.got)+' in '+p.days+' days against '+money(p.expected)+' to be on pace.</div>';
+  else h+='<div class="muted" style="margin-top:11px">Pace tracking starts once there are a couple of weeks of jobs behind it.</div>';
+  h+='<div style="height:11px"></div><button class="btn ghost sm" id="goalSet">Adjust</button></div>';
+  return h;
+}
+function goalForm(){
+  var g=goal(), auto=costPctActual();
+  return '<label class="f"><span>What do you want to take home in a year, after tax</span>'
+   +'<input type="number" inputmode="decimal" id="g_target" value="'+(g.target||'')+'" placeholder="80000"></label>'
+   +'<div class="row2"><label class="f"><span>Tax set aside %</span><input type="number" inputmode="decimal" id="g_tax" value="'+g.taxPct+'"></label>'
+   +'<label class="f"><span>Supplies % of revenue</span><input type="number" inputmode="decimal" id="g_cost" value="'+(g.costPct===null||g.costPct===undefined?'':g.costPct)+'" placeholder="'+(auto===null?'20':auto+' from your books')+'"></label></div>'
+   +'<div class="muted" style="margin:-4px 0 13px">'+(auto===null
+      ? 'Leave supplies blank and it assumes 20% until you have logged some jobs.'
+      : 'Leave supplies blank and it uses <b>'+auto+'%</b>, worked out from what you have actually spent and billed.')+'</div>'
+   +'<div class="row2"><label class="f"><span>Working days a week</span><input type="number" inputmode="numeric" id="g_days" value="'+g.daysPerWeek+'"></label>'
+   +'<label class="f"><span>Working weeks a year</span><input type="number" inputmode="numeric" id="g_weeks" value="'+g.weeksPerYear+'"></label></div>'
+   +'<div class="warnbox"><b>This is a planning estimate, not tax advice.</b> Florida has no state income tax, but self-employment tax alone runs about 15.3% before any federal income tax, so 25 to 30% is a common amount to set aside. Check the real number with an accountant.</div>'
+   +'<button class="btn" id="goalSave">Save</button>'
+   +(g.target?'<div style="height:9px"></div><button class="btn bad" id="goalClear">Clear target</button>':'');
 }
 function kv(l,v,col){return '<div><div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)">'+l+'</div>'
   +'<div style="font-size:17px;font-weight:700;color:'+(col||'var(--bone)')+';margin-top:2px">'+v+'</div></div>';}
@@ -713,6 +805,13 @@ document.addEventListener('click',function(ev){
     L().forEach(function(e){var p=findC(e.contactId);
       rows2.push([e.date,e.kind,e.amount,e.cat,e.memo,p?p.name:'',e.hours||'',e.paid?'yes':'no']);});
     dl('striking-ledger-'+stamp()+'.csv',csv(rows2),'text/csv');toast('CSV saved');return;}
+  if(t.id==='goalSet'){openSheet('Your number',goalForm());return;}
+  if(t.id==='goalSave'){
+    DB.goal={target:+$('#g_target').value||0,taxPct:+$('#g_tax').value||0,
+      daysPerWeek:+$('#g_days').value||5,weeksPerYear:+$('#g_weeks').value||50,
+      costPct:$('#g_cost').value===''?null:(+$('#g_cost').value||0)};
+    save();closeSheet();render();toast('Target set');return;}
+  if(t.id==='goalClear'){DB.goal=null;save();closeSheet();render();toast('Cleared');return;}
   if(t.id==='impBtn'){$('#impFile').click();return;}
   if(t.id==='pasteBtn'){
     var v=prompt('Paste the setup link or code you were sent'); if(!v)return;

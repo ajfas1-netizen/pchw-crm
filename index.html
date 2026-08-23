@@ -347,6 +347,11 @@ function profit(){return revAll()-opEx();}
 function forecast(){var t=0;C().forEach(function(c){if(+c.quoteAmount>0&&c.status!=='Completed'&&c.status!=='Dormant')t+=c.quoteAmount*(WEIGHT[c.status]||0);});return t;}
 function pipeline(){var t=0;C().forEach(function(c){if(+c.quoteAmount>0&&c.status!=='Completed'&&c.status!=='Dormant')t+=+c.quoteAmount;});return t;}
 function mrr(){var t=0;C().forEach(function(c){if(+c.planAmount>0&&c.status!=='Dormant')t+=+c.planAmount;});return t;}
+function reserve(){
+  var r=DB.settings.reserve||{};
+  return {label:r.label||'', amount:+r.amount||0};
+}
+function freeCash(){return cash()-reserve().amount;}
 function revToday(){return sum(L().filter(function(e){return e.kind==='revenue'&&String(e.date).slice(0,10)===today();}));}
 
 /* goal */
@@ -578,10 +583,19 @@ function vHome(){
   var m=goalMath(), got=revToday();
   var h=acts([['aPerson','Add person','person'],['aCard','Scan card','card'],['aRevenue','Log revenue','money'],
               ['aExpense','Add expense','cash'],['aReceipt','Scan receipt','receipt'],['aInvoice','New invoice','doc']]);
+  var rs=reserve();
   h+='<div class="kpi">'
-   +'<div class="card"><div class="lab">Cash on hand</div><div class="val">'+money(cash())+'</div></div>'
+   +'<div class="card" id="cashCard" style="cursor:pointer"><div class="lab">'
+   +(rs.amount?'Free to spend':'Cash on hand')+'</div><div class="val" style="color:'
+   +(rs.amount&&freeCash()<0?'var(--bad)':'var(--gold-lt)')+'">'+money(rs.amount?freeCash():cash())+'</div></div>'
    +'<div class="card"><div class="lab">Owed to him</div><div class="val" style="color:'+(owed()?'var(--warn)':'var(--gold-lt)')+'">'+money(owed())+'</div></div>'
    +'</div>';
+  if(rs.amount){
+    h+='<div class="card" id="cashCard2" style="cursor:pointer;padding:12px 14px">'
+     +'<div style="display:flex;justify-content:space-between;font-size:13.5px">'
+     +'<span class="muted">'+money(cash())+' in the bank</span>'
+     +'<span class="muted">&minus; '+money(rs.amount)+' for '+esc(rs.label||'something')+'</span></div></div>';
+  }
   if(m.perDay>0){
     var pct=Math.min(100,Math.round(100*got/m.perDay));
     h+='<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline">'
@@ -670,9 +684,11 @@ function vInsights(){
   var h=goalCard();
   var s=jobStats();
   h+='<div class="card"><div class="row2">'
-   +kv('Cash on hand',money(cash()))+kv('Owed',money(owed()),owed()?'var(--warn)':null)
+   +kv('In the bank',money(cash()))+kv('Owed',money(owed()),owed()?'var(--warn)':null)
    +kv('Capital in',money(capital()))+kv('Revenue billed',money(revAll()))
-   +kv('Operating spend',money(opEx()))+kv('Equipment',money(equip()))+'</div>'
+   +kv('Operating spend',money(opEx()))+kv('Equipment',money(equip()))
+   +(reserve().amount?kv('Set aside, '+esc(reserve().label||'committed'),'-'+money(reserve().amount),'var(--warn)')
+      +kv('Free to spend',money(freeCash()),freeCash()<0?'var(--bad)':'var(--ok)'):'')+'</div>'
    +'<div style="margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.08)">'
    +kv('Profit, revenue minus operating spend',money(profit()),profit()>=0?'var(--ok)':'var(--bad)')
    +'<div class="muted" style="margin-top:7px">Equipment is left out on purpose. It is a one-time asset, not a monthly cost.</div></div></div>';
@@ -882,6 +898,17 @@ function readLedgerForm(){
 }
 
 /* =================== goal =================== */
+function reserveForm(){
+  var r=reserve();
+  return '<div class="muted" style="margin-bottom:13px">Money that is in the bank but already spoken for. '
+   +'It comes off what the app calls free to spend, so a big plan does not look like spare cash.</div>'
+   +'<label class="f"><span>What is it for</span><input type="text" id="rs_label" value="'+esc(r.label)+'" placeholder="Work van"></label>'
+   +'<label class="f"><span>Amount set aside</span><input type="number" inputmode="decimal" id="rs_amount" value="'+(r.amount||'')+'" placeholder="8000"></label>'
+   +'<div class="warnbox">When he actually buys it, log it as <b>Money out, equipment</b>, not a running cost. '
+   +'A van is an asset he keeps, so it should not land on the profit line, and you can clear this set-aside then.</div>'
+   +'<button class="btn" id="rsSave">Save</button>'
+   +(r.amount?'<div style="height:9px"></div><button class="btn bad" id="rsClear">Clear it</button>':'');
+}
 function goalForm(){
   var g=goal(), auto=costPctActual();
   return '<label class="f"><span>Take home in a year, after tax</span>'
@@ -1101,6 +1128,12 @@ document.addEventListener('click',function(ev){
     delRec('ledger',$('#lid').value);closeSheet();render();toast('Deleted');return;}
 
   /* goal */
+  if(t.id==='cashCard'||t.id==='cashCard2'||(el=t.closest('#cashCard,#cashCard2'))){
+    openSheet('Set aside',reserveForm());return;}
+  if(t.id==='rsSave'){
+    setSetting('reserve',{label:$('#rs_label').value.trim(),amount:+$('#rs_amount').value||0});
+    closeSheet();render();toast('Saved');return;}
+  if(t.id==='rsClear'){setSetting('reserve',{label:'',amount:0});closeSheet();render();toast('Cleared');return;}
   if(t.id==='goalSet'){openSheet('Your number',goalForm());return;}
   if(t.id==='goalSave'){
     setSetting('goal',{target:+$('#g_target').value||0,taxPct:+$('#g_tax').value||0,

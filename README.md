@@ -1,20 +1,14 @@
 # Striking Details — Book
 
-Phone-first CRM and ledger for Striking Details (Palm City, FL).
+CRM and ledger for Striking Details (Palm City, FL). Static app, Supabase behind it.
 
-## Current version — `apps-script/`
+- **Data**: Postgres on Supabase. Nothing is stored on the phone.
+- **Login**: a 4-digit PIN, which is the password to one shared account. Real auth,
+  real row level security — the PIN is never in this repo.
+- **Photos**: Supabase Storage.
+- **Hosting**: GitHub Pages.
 
-Google Apps Script serves the app, a Google Sheet is the database, Google
-accounts are the login. **No business data is stored on the phone.** Setup in
-`apps-script/SETUP.md`.
+Setup: `supabase/SETUP.md`. Schema: `supabase/schema.sql`.
 
-- `Code.gs` — server: auth, read/write the Sheet, photo uploads to Drive
-- `App.html` — shell, business logic, the four tabs
-- `Forms.html` — forms, invoice renderer, event handling
-
-## Legacy — root `index.html`
-
-The earlier build, which stored everything in the phone's browser storage behind
-a passcode. Superseded: iOS deletes web-app storage for apps unseen for about a
-week, and a detailer's phone gets wet. Kept only for reference; do not send
-anyone to it.
+`legacy-device-local.html` is the abandoned first build that kept everything in the
+phone's browser storage. Kept for reference only.

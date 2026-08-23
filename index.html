@@ -203,8 +203,16 @@ function daysTo(s){if(!s)return null;var a=new Date(String(s).slice(0,10)+'T00:0
 function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('on');},2000);}
 
 /* =================== supabase =================== */
-var SUPA_URL = window.localStorage.getItem('sb_url')  || '';
-var SUPA_KEY = window.localStorage.getItem('sb_key')  || '';
+var SUPA_URL = 'https://lyokwhktyxsgxvsjhnky.supabase.co';
+var SUPA_KEY = 'sb_publishable_Yb0bUcBxx561Z18MiHt5yw_UM7fml85';
+/* publishable key only. It grants nothing on its own — row level security is
+   what protects the data, and every table refuses anonymous reads. */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(function(rs){
+    rs.forEach(function(r){ r.unregister(); });
+  }).catch(function(){});
+  if(window.caches&&caches.keys)caches.keys().then(function(k){k.forEach(function(x){caches.delete(x);});}).catch(function(){});
+}
 var BOOK_EMAIL='book@palmcityhandwash.com';
 var PIN_SALT='striking-details-book-v1';
 var sb=null, DB={contacts:[],ledger:[],invoices:[],settings:{}}, USER='', PENDING=0, LASTERR=null, RETRY=[];
